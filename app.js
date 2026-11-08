@@ -199,7 +199,15 @@ function viewSettings() {
 let sheetState = null;
 function openSheet(state) { sheetState = state; $('sheet').hidden = false; $('sheetBg').hidden = false; refreshSheet(); }
 function closeSheet() { sheetState = null; $('sheet').hidden = true; $('sheetBg').hidden = true; }
-function refreshSheet() { if (sheetState) $('sheet').innerHTML = (sheetState.kind === 'cat' ? sheetCat : sheetQuote)(); }
+// Full-screen sheet: scrollable body + fixed footer (the sheet's last .row) that never scrolls away
+function refreshSheet() {
+  if (!sheetState) return;
+  const sh = $('sheet'), prev = sh.querySelector('.sb'), top = prev ? prev.scrollTop : 0;
+  sh.innerHTML = '<div class="sb">' + (sheetState.kind === 'cat' ? sheetCat : sheetQuote)() + '</div>';
+  const sb = sh.firstChild, last = sb.lastElementChild;
+  if (last && last.classList.contains('row')) { last.classList.add('sf'); sh.appendChild(last); }
+  sb.scrollTop = top;
+}
 
 // Quote sheet: weight, rate and making are all editable in place. One keypad types into the selected box.
 function qLine(st) {

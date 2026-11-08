@@ -96,10 +96,11 @@ h2{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--mute
 .estep button{border:0;background:var(--card);padding:9px 0;font-size:20px;font-weight:700}
 .estep .rs{font-size:12px;font-weight:600;color:var(--accent);border-left:1px solid var(--line);border-right:1px solid var(--line)}
 .estep span{border-left:1px solid var(--line);border-right:1px solid var(--line);background:var(--card)}
-/* Sheet: fits the visible screen (dvh accounts for iOS browser bars); CTA pinned to its bottom */
-.sheet{max-height:92%;max-height:calc(100dvh - 24px);padding-bottom:0}
-.sheet > .row:last-child{position:sticky;bottom:0;background:var(--card);margin:0 calc(-1 * max(16px,env(safe-area-inset-right,0px))) 0;padding:10px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);z-index:1}
+/* Sheet: full screen. Body scrolls, footer (.sf) is a fixed flex item so the button is always on screen */
+.sheet{inset:0;max-height:none;height:100%;border-radius:0;display:flex;flex-direction:column;padding:0;gap:0;max-width:none;overflow:hidden}
+.sheet .sb{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:grid;gap:12px;align-content:start;padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));width:100%;max-width:640px;margin:0 auto}
+.sheet .sf{flex:none;background:var(--card);border-top:1px solid var(--line);padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));width:100%;max-width:640px;margin:0 auto}
 .keys{gap:6px}
 .keys button{padding:11px 0;font-size:21px}
 .wt{font-size:34px;padding:2px 6px}
-@media (max-height:720px){.sheet{gap:8px}.keys button{padding:8px 0;font-size:19px}.wt{font-size:30px}.eval{padding:6px 10px}.estep button{padding:6px 0}.bd{font-size:13px}.bd .tot{font-size:20px}}
+@media (max-height:720px){.sheet .sb{gap:8px}.keys button{padding:8px 0;font-size:19px}.wt{font-size:30px}.eval{padding:6px 10px}.estep button{padding:6px 0}.bd{font-size:13px}.bd .tot{font-size:20px}}
