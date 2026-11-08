@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Live Rate Test</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--fg:#1d1b16;--muted:#6b665a;--line:#e3dfd3;--gold:#9a6a00;--silver:#5d6875;--ok:#1f7a3d;--bad:#b3261e;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#15140f;--card:#1f1d17;--fg:#f1eee5;--muted:#a49e8e;--line:#34312a;--gold:#e0b44a;--silver:#b4bfcc;--ok:#5cc27e;--bad:#f2867e;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-block:16px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:560px;margin:0 auto;display:grid;gap:14px}
+h1{font-size:20px;margin:0}
+.sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.status{display:flex;align-items:center;gap:8px;font-weight:600;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none}
+.status.ok .dot{background:var(--ok)}.status.bad .dot{background:var(--bad)}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+section h2{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.name{font-weight:600;min-width:0}
+.name small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.ask{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.gold .ask{color:var(--gold)}.silver .ask{color:var(--silver)}
+.hl{grid-column:1/-1;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.empty{padding:12px;color:var(--muted)}
+pre{margin:0;padding:10px 12px;font:12px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;color:var(--muted)}
+button{font:inherit;font-weight:600;padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Live rate test</h1>
+    <p class="sub">Connects from this phone to the Vicky Gold rate feed (vickygold.co.in). Page opened <span id="opened"></span>.</p>
+  </div>
+  <div id="status" class="status"><span class="dot"></span><span id="statusText">Connecting…</span></div>
+  <section><h2>Gold &amp; silver (feed: mainProduct)</h2><div id="products"><div class="empty">Waiting for rates…</div></div></section>
+  <section><h2>Spot / reference (feed: refProduct)</h2><div id="refs"><div class="empty">Waiting…</div></div></section>
+  <section><h2>Log</h2><pre id="log"></pre></section>
+  <section><h2>First raw message</h2><pre id="raw">—</pre></section>
+  <button id="copy" type="button">Copy log for Claude</button>
+</main>
+<script>/*SOCKETIO*/</script>
+<script>/*PAKO*/</script>
+<script>
+const $=id=>document.getElementById(id);
+const t0=Date.now();$('opened').textContent=new Date().toLocaleTimeString('en-IN');
+const lines=[];function log(m){const s='['+((Date.now()-t0)/1000).toFixed(1)+'s] '+m;lines.push(s);$('log').textContent=lines.slice(-60).join('\n');}
+function status(text,cls){$('statusText').textContent=text;$('status').className='status '+(cls||'');}
+function unpack(d){try{if(typeof d==='string'&&d.trim().startsWith('[')||typeof d==='object'&&!(d instanceof ArrayBuffer)&&!ArrayBuffer.isView(d))return typeof d==='string'?JSON.parse(d):d;return JSON.parse(pako.inflateRaw(d,{to:'string'}));}catch(e){log('decode error: '+e.message);return null;}}
+const fmt=v=>{const n=Number(v);return isFinite(n)&&v!==''&&v!=null?n.toLocaleString('en-IN',{maximumFractionDigits:2}):(v??'–');};
+let gotRaw=false,count=0;
+function showRaw(ev,obj){if(gotRaw)return;gotRaw=true;$('raw').textContent=ev+':\n'+JSON.stringify(Array.isArray(obj)?obj.slice(0,3):obj,null,1).slice(0,3000);}
+function render(list,el,kind){
+  if(!Array.isArray(list)||!list.length){el.innerHTML='<div class="empty">Empty message</div>';return;}
+  el.innerHTML=list.map(r=>{
+    const name=r.name??r.symbol??r.Symbol??'?';const src=(r.src??r.Source??'').toString().toLowerCase();
+    const ask=r.ask??r.Ask, bid=r.bid??r.Bid, hi=r.high??r.High, lo=r.low??r.Low;
+    const cls=src.includes('silver')||/silver|xag/i.test(name)?'silver':'gold';
+    const hidden=(kind==='p'&&r.isView===false)?' · hidden on their site':'';
+    return '<div class="row '+cls+'"><div class="name">'+String(name).replace(/</g,'&lt;')+'<small>'+(src||'')+hidden+'</small></div><div class="ask">'+fmt(ask)+'</div><div class="hl">Buy '+fmt(bid)+' · High '+fmt(hi)+' · Low '+fmt(lo)+'</div></div>';
+  }).join('');
+}
+log('UA: '+navigator.userAgent);
+log('Loading socket.io '+(window.io?'ok':'MISSING')+', pako '+(window.pako?'ok':'MISSING'));
+const sock=io('https://vickygold.co.in:10001',{transports:['websocket','polling'],reconnectionAttempts:6,timeout:15000});
+sock.on('connect',()=>{status('Connected to feed — waiting for rates','ok');log('connected via '+sock.io.engine.transport.name+', id '+sock.id);sock.emit('room','vickygold');sock.emit('client','vickygold');});
+sock.on('connect_error',e=>{status('Could not connect: '+e.message,'bad');log('connect_error: '+e.message+(e.description?' / '+JSON.stringify(e.description).slice(0,200):'')+(e.type?' type='+e.type:''));});
+sock.on('disconnect',r=>{status('Disconnected: '+r,'bad');log('disconnect: '+r);});
+sock.io.on('reconnect_attempt',n=>log('reconnect attempt '+n));
+sock.io.on('reconnect_failed',()=>{status('Gave up connecting after several tries','bad');log('reconnect_failed');});
+sock.on('mainProduct',d=>{const o=unpack(d);if(!o)return;count++;showRaw('mainProduct',o);render(o,$('products'),'p');status('Live — '+count+' updates, last '+new Date().toLocaleTimeString('en-IN'),'ok');if(count===1)log('first mainProduct: '+(o.length||0)+' items');});
+sock.on('refProduct',d=>{const o=unpack(d);if(!o)return;showRaw('refProduct',o);render(o,$('refs'),'r');});
+['refDetails','clientDetails'].forEach(ev=>sock.on(ev,d=>{const o=unpack(d);log(ev+' received'+(o?': '+JSON.stringify(o).slice(0,160):''));}));
+sock.onAny((ev)=>{if(!['mainProduct','refProduct','refDetails','clientDetails'].includes(ev))log('other event: '+ev);});
+$('copy').addEventListener('click',async()=>{const txt=lines.join('\n')+'\n\nRAW:\n'+$('raw').textContent;try{await navigator.clipboard.writeText(txt);$('copy').textContent='Copied';}catch(e){const r=document.createRange();r.selectNodeContents($('log'));getSelection().removeAllRanges();getSelection().addRange(r);$('copy').textContent='Select & copy the log';}});
+</script>
+</body>
+</html>
