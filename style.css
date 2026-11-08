@@ -96,8 +96,3 @@ h2{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--mute
 .estep button{border:0;background:var(--card);padding:9px 0;font-size:20px;font-weight:700}
 .estep .rs{font-size:12px;font-weight:600;color:var(--accent);border-left:1px solid var(--line);border-right:1px solid var(--line)}
 .estep span{border-left:1px solid var(--line);border-right:1px solid var(--line);background:var(--card)}
-.negot{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:8px}
-.negot summary{font-weight:600;cursor:pointer}
-.negot[open]{display:grid}
-.negot input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:18px;margin:8px 0}
-.negot .opt{margin-top:6px}

@@ -73,7 +73,7 @@ function rateFor(metal, purity) {   // ₹/g the shop charges for this purity
   return r2(r);
 }
 
-// Price one line. wt in grams. Overrides from negotiation: rate (₹/g), making (₹ absolute)
+// Price one line. wt in grams. Per-item overrides: rate (₹/g), mval (making in the item's unit)
 function price(line) {
   const c = CATS.find(x => x.id === line.catId) || line.cat;
   const rate = line.rate ?? rateFor(c.metal, c.purity);
@@ -209,7 +209,7 @@ function qLine(st) {
   return l;
 }
 function quoteState(line, idx) {
-  return { kind: 'quote', idx, line, field: 'wt', fresh: idx != null, target: '',
+  return { kind: 'quote', idx, line, field: 'wt', fresh: idx != null,
     wtStr: line.wt ? String(line.wt) : '',
     rateStr: line.rate != null ? numStr(line.rate) : '',
     mvalStr: line.mval != null ? numStr(line.mval) : line.making != null && line.wt ? (() => { const c = CATS.find(x => x.id === line.catId); const m = price({ catId: line.catId, wt: line.wt, rate: line.rate }).metal; return numStr(c.mtype === 'pct' ? line.making / m * 100 : c.mtype === 'pg' ? line.making / line.wt : line.making); })() : '' };
@@ -222,20 +222,6 @@ function sheetQuote() {
   const box = (f, label, val, unit, edited, resetLabel) => `<div class="ebox ${st.field === f ? 'on' : ''}">
       <button class="eval" data-field="${f}"><small>${label}${edited ? ' <span class="tag">Edited</span>' : ''}</small><b class="num">${val}</b><small>${unit}</small></button>
       <div class="estep"><button data-step="${f}" data-dir="-1" aria-label="Decrease ${label}">−</button>${edited ? `<button data-reset="${f}" class="rs">${resetLabel}</button>` : '<span></span>'}<button data-step="${f}" data-dir="1" aria-label="Increase ${label}">+</button></div></div>`;
-  let neg = '';
-  if (wt > 0 && p.ok) {
-    const T = parseFloat(st.target); let a = '', b = '';
-    if (T > 0) {
-      const pre = S.gstOn ? T / (1 + S.gstPct / 100) : T, mk = r2(pre - p.metal);
-      const mv = c.mtype === 'pct' ? mk / p.metal * 100 : c.mtype === 'pg' ? mk / wt : mk;
-      a = mk >= 0 ? `<button class="opt" data-neg="mval" data-v="${r2(mv)}"><b>Making → ${makingLabel(c, r2(mv))}</b><span>Rate stays ${inr(p.rate, 2)}/g · making ${inr(mk)}</span></button>`
-        : `<div class="opt no"><b>Lower making</b><span class="warn">Not possible: metal alone is ${inr(p.metal)}</span></div>`;
-      const r = r2(c.mtype === 'pct' ? pre / (wt * (1 + curMval / 100)) : c.mtype === 'pg' ? (pre - wt * curMval) / wt : (pre - curMval) / wt);
-      b = r > 0 ? `<button class="opt" data-neg="rate" data-v="${r}"><b>Rate → ${inr(r, 2)}/g</b><span>${today != null ? (today - r >= 0 ? inr(today - r, 2) + '/g below' : inr(r - today, 2) + '/g above') + " today's rate · " : ''}making ${makingLabel(c, curMval)} kept</span></button>` : '';
-    }
-    neg = `<details class="negot" ${st.negOpen || st.target ? 'open' : ''}><summary>Customer wants a lower price?</summary>
-      <input type="number" inputmode="numeric" id="target" value="${st.target || ''}" placeholder="Customer's final price, ₹">${a}${b}</details>`;
-  }
   return `<h3><span>${c.icon || ''} ${esc(c.name)} <small class="note">${c.purity}</small></span><button class="x" data-act="close" aria-label="Close">×</button></h3>
     <button class="wt ${st.field === 'wt' ? 'on' : ''}" data-field="wt">${st.wtStr || '0'}<small> g</small></button>
     <div class="edits">
@@ -244,7 +230,6 @@ function sheetQuote() {
     </div>
     <div class="bd num">${p.ok ? `<div><span>Metal ${wt} g × ${inr(p.rate, 2)}</span><span>${inr(p.metal, 2)}</span></div><div><span>Making ${makingLabel(c, curMval)}</span><span>${inr(p.making, 2)}</span></div>${S.gstOn ? `<div><span>GST ${S.gstPct}%</span><span>${inr(p.gst, 2)}</span></div>` : ''}<div class="tot"><span>Price</span><span>${inr(roundOff(p.total))}</span></div>`
       : '<div class="warn">No rate yet. Tap Rate and type one.</div>'}</div>
-    ${neg}
     <div class="keys">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map(k => `<button data-key="${k}">${k}</button>`).join('')}</div>
     <div class="row">${st.idx == null ? `<button class="btn primary" data-act="add" ${wt > 0 && p.ok ? '' : 'disabled'}>Check another item</button>` : `<button class="btn primary" data-act="saveline">Done</button><button class="btn" data-act="delline">Remove</button>`}</div>`;
 }
@@ -289,11 +274,6 @@ document.addEventListener('click', e => {
     st.field = d.step; st.fresh = true; refreshSheet(); return;
   }
   if (d.reset && sheetState) { sheetState[d.reset + 'Str'] = ''; sheetState.field = 'wt'; refreshSheet(); return; }
-  if (d.neg && sheetState) {
-    if (d.neg === 'mval') { sheetState.mvalStr = d.v; }
-    if (d.neg === 'rate') { sheetState.rateStr = d.v; }
-    refreshSheet(); return;
-  }
   if (d.use) { S.feed[d.use].name = d.name; S.manual[d.use] = null; save(); render(); renderTop(); toast('Using ' + d.name + ' for ' + d.use); return; }
   if (d.editcat) { const c = CATS.find(x => x.id === d.editcat); openSheet({ kind: 'cat', cat: { ...c } }); return; }
   switch (d.act) {
@@ -315,9 +295,7 @@ document.addEventListener('click', e => {
   }
 });
 $('sheetBg').addEventListener('click', closeSheet);
-document.addEventListener('toggle', e => { if (e.target.classList?.contains('negot') && sheetState) sheetState.negOpen = e.target.open; }, true);
 document.addEventListener('input', e => {
-  if (e.target.id === 'target' && sheetState) { sheetState.target = e.target.value; const pos = e.target.selectionStart; refreshSheet(); const t = $('target'); t.focus(); try { t.setSelectionRange(pos, pos); } catch (_) {} }
 });
 document.addEventListener('change', e => {
   const k = e.target.dataset.set; if (!k) return;
