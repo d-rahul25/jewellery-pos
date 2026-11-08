@@ -78,13 +78,16 @@ function price(line) {
   const rate = line.rate ?? rateFor(c.metal, c.purity);
   if (rate == null || !(line.wt > 0)) return { c, rate, metal: 0, making: 0, gst: 0, total: 0, ok: rate != null };
   const metal = r2(line.wt * rate);
-  let making = line.making ?? (c.mtype === 'pct' ? metal * c.mval / 100 : c.mtype === 'pg' ? line.wt * c.mval : Number(c.mval));
+  const mv = line.mval ?? c.mval;
+  let making = line.making ?? (c.mtype === 'pct' ? metal * mv / 100 : c.mtype === 'pg' ? line.wt * mv : Number(mv));
   making = r2(making);
   const gst = S.gstOn ? r2((metal + making) * S.gstPct / 100) : 0;
   return { c, rate, metal, making, gst, total: r2(metal + making + gst), ok: true };
 }
 const roundOff = t => Math.round(t / S.roundTo) * S.roundTo;
-const makingLabel = c => c.mtype === 'pct' ? c.mval + '%' : c.mtype === 'pg' ? '₹' + c.mval + '/g' : '₹' + c.mval + ' flat';
+const makingLabel = (c, v = c.mval) => c.mtype === 'pct' ? v + '%' : c.mtype === 'pg' ? '₹' + v + '/g' : '₹' + v + ' flat';
+const mUnit = c => c.mtype === 'pct' ? '% of metal' : c.mtype === 'pg' ? '₹ per gram' : '₹ per piece';
+const numStr = n => String(r2(n));
 
 // ---------- live feed ----------
 function unpack(d) {
@@ -149,7 +152,7 @@ function listTotals() {
 function viewList() {
   if (!LIST.length) return `<div class="card empty">No items yet.<br>Go to <b>Price</b>, tap an item and add it here.</div>`;
   const T = listTotals();
-  return `<div class="card">${LIST.map((l, i) => { const p = price(l); const neg = l.rate != null || l.making != null;
+  return `<div class="card">${LIST.map((l, i) => { const p = price(l); const neg = l.rate != null || l.making != null || l.mval != null;
     return `<button class="line" data-line="${i}"><span class="t">${p.c.icon || ''} ${esc(p.c.name)} <small class="num">${l.wt} g</small>${neg ? '<span class="tag">Adjusted</span>' : ''}</span><span class="amt num">${inr(p.total)}</span>
     <span class="d num">${p.c.purity} @ ${inr(p.rate, 2)}/g = ${inr(p.metal, 2)} · Making ${inr(p.making, 2)}${S.gstOn ? ' · GST ' + inr(p.gst, 2) : ''}</span></button>`; }).join('')}</div>
   <div class="card totals num"><div><span>Metal</span><span>${inr(T.metal, 2)}</span></div><div><span>Making</span><span>${inr(T.making, 2)}</span></div>
@@ -198,35 +201,51 @@ function openSheet(state) { sheetState = state; $('sheet').hidden = false; $('sh
 function closeSheet() { sheetState = null; $('sheet').hidden = true; $('sheetBg').hidden = true; }
 function refreshSheet() { if (sheetState) $('sheet').innerHTML = (sheetState.kind === 'cat' ? sheetCat : sheetQuote)(); }
 
-function sheetQuote() {   // weigh + price (new item) or edit/negotiate (existing line)
-  const st = sheetState, line = st.line, wt = parseFloat(st.wtStr) || 0;
-  const p = price({ ...line, wt });
-  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
+// Quote sheet: weight, rate and making are all editable in place. One keypad types into the selected box.
+function qLine(st) {
+  const l = { catId: st.line.catId, wt: parseFloat(st.wtStr) || 0 };
+  if (st.rateStr !== '') l.rate = parseFloat(st.rateStr) || 0;
+  if (st.mvalStr !== '') l.mval = parseFloat(st.mvalStr) || 0;
+  return l;
+}
+function quoteState(line, idx) {
+  return { kind: 'quote', idx, line, field: 'wt', fresh: idx != null, target: '',
+    wtStr: line.wt ? String(line.wt) : '',
+    rateStr: line.rate != null ? numStr(line.rate) : '',
+    mvalStr: line.mval != null ? numStr(line.mval) : line.making != null && line.wt ? (() => { const c = CATS.find(x => x.id === line.catId); const m = price({ catId: line.catId, wt: line.wt, rate: line.rate }).metal; return numStr(c.mtype === 'pct' ? line.making / m * 100 : c.mtype === 'pg' ? line.making / line.wt : line.making); })() : '' };
+}
+function sheetQuote() {
+  const st = sheetState, line = qLine(st), wt = line.wt;
+  const p = price(line), c = p.c, today = rateFor(c.metal, c.purity);
+  const rateEdited = st.rateStr !== '', mkEdited = st.mvalStr !== '';
+  const curMval = mkEdited ? line.mval : c.mval;
+  const box = (f, label, val, unit, edited, resetLabel) => `<div class="ebox ${st.field === f ? 'on' : ''}">
+      <button class="eval" data-field="${f}"><small>${label}${edited ? ' <span class="tag">Edited</span>' : ''}</small><b class="num">${val}</b><small>${unit}</small></button>
+      <div class="estep"><button data-step="${f}" data-dir="-1" aria-label="Decrease ${label}">−</button>${edited ? `<button data-reset="${f}" class="rs">${resetLabel}</button>` : '<span></span>'}<button data-step="${f}" data-dir="1" aria-label="Increase ${label}">+</button></div></div>`;
   let neg = '';
-  if (st.idx != null && wt > 0 && p.ok) {
-    const T = parseFloat(st.target);
-    let a = '', b = '';
+  if (wt > 0 && p.ok) {
+    const T = parseFloat(st.target); let a = '', b = '';
     if (T > 0) {
-      const pre = S.gstOn ? T / (1 + S.gstPct / 100) : T, c = p.c;
-      const mk = r2(pre - p.metal);
-      a = mk >= 0 ? `<button class="opt" data-neg="making" data-v="${mk}"><b>Lower making to ${inr(mk, 2)}</b><span>Rate stays ${inr(p.rate, 2)}/g · making ${(mk / p.metal * 100).toFixed(1)}% of metal</span></button>`
+      const pre = S.gstOn ? T / (1 + S.gstPct / 100) : T, mk = r2(pre - p.metal);
+      const mv = c.mtype === 'pct' ? mk / p.metal * 100 : c.mtype === 'pg' ? mk / wt : mk;
+      a = mk >= 0 ? `<button class="opt" data-neg="mval" data-v="${r2(mv)}"><b>Making → ${makingLabel(c, r2(mv))}</b><span>Rate stays ${inr(p.rate, 2)}/g · making ${inr(mk)}</span></button>`
         : `<div class="opt no"><b>Lower making</b><span class="warn">Not possible: metal alone is ${inr(p.metal)}</span></div>`;
-      const curMk = line.making;
-      let r = curMk != null ? (pre - curMk) / wt : c.mtype === 'pct' ? pre / (wt * (1 + c.mval / 100)) : c.mtype === 'pg' ? (pre - wt * c.mval) / wt : (pre - c.mval) / wt;
-      r = r2(r);
-      b = r > 0 ? `<button class="opt" data-neg="rate" data-v="${r}"><b>Lower rate to ${inr(r, 2)}/g</b><span>${p.rate - r >= 0 ? inr(p.rate - r, 2) + '/g below' : inr(r - p.rate, 2) + '/g above'} your rate · making rule unchanged</span></button>` : '';
+      const r = r2(c.mtype === 'pct' ? pre / (wt * (1 + curMval / 100)) : c.mtype === 'pg' ? (pre - wt * curMval) / wt : (pre - curMval) / wt);
+      b = r > 0 ? `<button class="opt" data-neg="rate" data-v="${r}"><b>Rate → ${inr(r, 2)}/g</b><span>${today != null ? (today - r >= 0 ? inr(today - r, 2) + '/g below' : inr(r - today, 2) + '/g above') + " today's rate · " : ''}making ${makingLabel(c, curMval)} kept</span></button>` : '';
     }
-    neg = `<h3 style="font-size:15px">Customer's price</h3>
-      <input type="number" inputmode="numeric" id="target" value="${st.target || ''}" placeholder="Final price customer wants, ₹" style="padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:18px">
-      ${a}${b}
-      ${line.rate != null || line.making != null ? '<button class="btn small" data-neg="reset">Undo adjustment</button>' : ''}`;
+    neg = `<details class="negot" ${st.negOpen || st.target ? 'open' : ''}><summary>Customer wants a lower price?</summary>
+      <input type="number" inputmode="numeric" id="target" value="${st.target || ''}" placeholder="Customer's final price, ₹">${a}${b}</details>`;
   }
-  return `<h3><span>${p.c.icon || ''} ${esc(p.c.name)} <small class="note">${p.c.purity} · making ${line.making != null ? inr(line.making) + ' set' : makingLabel(p.c)}</small></span><button class="x" data-act="close" aria-label="Close">×</button></h3>
-    <div class="wt">${st.wtStr || '0'}<small> g</small></div>
-    <div class="bd num">${p.ok ? `<div><span>Metal ${wt} g × ${inr(p.rate, 2)}</span><span>${inr(p.metal, 2)}</span></div><div><span>Making</span><span>${inr(p.making, 2)}</span></div>${S.gstOn ? `<div><span>GST ${S.gstPct}%</span><span>${inr(p.gst, 2)}</span></div>` : ''}<div class="tot"><span>Price</span><span>${inr(roundOff(p.total))}</span></div>`
-      : '<div class="warn">No rate yet. Set one in the Rates tab.</div>'}</div>
+  return `<h3><span>${c.icon || ''} ${esc(c.name)} <small class="note">${c.purity}</small></span><button class="x" data-act="close" aria-label="Close">×</button></h3>
+    <button class="wt ${st.field === 'wt' ? 'on' : ''}" data-field="wt">${st.wtStr || '0'}<small> g</small></button>
+    <div class="edits">
+      ${box('rate', 'Rate', p.rate != null ? inr(p.rate, 2) : '—', rateEdited && today != null ? "today " + inr(today, 2) : 'per gram', rateEdited, "↺ Today's")}
+      ${box('mval', 'Making', makingLabel(c, curMval), mkEdited ? 'usual ' + makingLabel(c) : mUnit(c), mkEdited, '↺ Usual')}
+    </div>
+    <div class="bd num">${p.ok ? `<div><span>Metal ${wt} g × ${inr(p.rate, 2)}</span><span>${inr(p.metal, 2)}</span></div><div><span>Making ${makingLabel(c, curMval)}</span><span>${inr(p.making, 2)}</span></div>${S.gstOn ? `<div><span>GST ${S.gstPct}%</span><span>${inr(p.gst, 2)}</span></div>` : ''}<div class="tot"><span>Price</span><span>${inr(roundOff(p.total))}</span></div>`
+      : '<div class="warn">No rate yet. Tap Rate and type one.</div>'}</div>
     ${neg}
-    <div class="keys">${keys.map(k => `<button data-key="${k}">${k}</button>`).join('')}</div>
+    <div class="keys">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map(k => `<button data-key="${k}">${k}</button>`).join('')}</div>
     <div class="row">${st.idx == null ? `<button class="btn primary" data-act="add" ${wt > 0 && p.ok ? '' : 'disabled'}>Add to list</button>` : `<button class="btn primary" data-act="saveline">Save</button><button class="btn" data-act="delline">Remove</button>`}</div>`;
 }
 
@@ -250,28 +269,37 @@ document.addEventListener('click', e => {
   const d = b.dataset;
   if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); return; }
   if (d.metal) { metalTab = d.metal; render(); return; }
-  if (d.cat) { const c = CATS.find(x => x.id === d.cat); openSheet({ kind: 'quote', line: { catId: c.id, cat: c }, wtStr: '' }); return; }
-  if (d.line != null) { const l = LIST[+d.line]; openSheet({ kind: 'quote', idx: +d.line, line: { ...l }, wtStr: String(l.wt), target: '' }); return; }
+  if (d.cat) { const c = CATS.find(x => x.id === d.cat); openSheet(quoteState({ catId: c.id }, null)); return; }
+  if (d.line != null) { openSheet(quoteState({ ...LIST[+d.line] }, +d.line)); return; }
+  if (d.field && sheetState) { sheetState.field = d.field; sheetState.fresh = true; refreshSheet(); return; }
   if (d.key && sheetState) {
-    let s = sheetState.wtStr;
-    if (d.key === '⌫') s = s.slice(0, -1);
-    else if (d.key === '.') { if (!s.includes('.')) s = (s || '0') + '.'; }
-    else if (!(s.includes('.') && s.split('.')[1].length >= 3) && s.length < 9) s = (s === '0' ? '' : s) + d.key;
-    sheetState.wtStr = s; refreshSheet(); return;
+    const st = sheetState, k = st.field + 'Str', max = st.field === 'wt' ? 3 : 2;
+    let v = st.fresh && d.key !== '⌫' ? '' : st[k];
+    if (st.fresh && d.key === '⌫') v = '';
+    st.fresh = false;
+    if (d.key === '⌫') v = v.slice(0, -1);
+    else if (d.key === '.') { if (!v.includes('.')) v = (v || '0') + '.'; }
+    else if (!(v.includes('.') && v.split('.')[1].length >= max) && v.length < 9) v = (v === '0' ? '' : v) + d.key;
+    st[k] = v; refreshSheet(); return;
   }
+  if (d.step && sheetState) {
+    const st = sheetState, c = CATS.find(x => x.id === st.line.catId), line = qLine(st), p = price(line);
+    if (d.step === 'rate') { const step = c.metal === 'gold' ? 10 : 1; st.rateStr = numStr(Math.max(0, (p.rate || 0) + step * d.dir)); }
+    else { const step = c.mtype === 'pct' ? 0.5 : c.mtype === 'pg' ? 1 : 10; st.mvalStr = numStr(Math.max(0, (line.mval ?? c.mval) + step * d.dir)); }
+    st.field = d.step; st.fresh = true; refreshSheet(); return;
+  }
+  if (d.reset && sheetState) { sheetState[d.reset + 'Str'] = ''; sheetState.field = 'wt'; refreshSheet(); return; }
   if (d.neg && sheetState) {
-    const l = sheetState.line;
-    if (d.neg === 'making') { l.making = +d.v; }
-    if (d.neg === 'rate') { l.rate = +d.v; }
-    if (d.neg === 'reset') { delete l.making; delete l.rate; }
+    if (d.neg === 'mval') { sheetState.mvalStr = d.v; }
+    if (d.neg === 'rate') { sheetState.rateStr = d.v; }
     refreshSheet(); return;
   }
   if (d.use) { S.feed[d.use].name = d.name; S.manual[d.use] = null; save(); render(); renderTop(); toast('Using ' + d.name + ' for ' + d.use); return; }
   if (d.editcat) { const c = CATS.find(x => x.id === d.editcat); openSheet({ kind: 'cat', cat: { ...c } }); return; }
   switch (d.act) {
     case 'close': closeSheet(); break;
-    case 'add': { const st = sheetState; LIST.push({ catId: st.line.catId, wt: parseFloat(st.wtStr) }); save(); closeSheet(); render(); toast('Added to list'); break; }
-    case 'saveline': { const st = sheetState, l = { ...st.line, wt: parseFloat(st.wtStr) || 0 }; delete l.cat; if (l.wt > 0) LIST[st.idx] = l; save(); closeSheet(); render(); break; }
+    case 'add': { LIST.push(qLine(sheetState)); save(); closeSheet(); render(); toast('Added to list'); break; }
+    case 'saveline': { const l = qLine(sheetState); if (l.wt > 0) LIST[sheetState.idx] = l; save(); closeSheet(); render(); break; }
     case 'delline': LIST.splice(sheetState.idx, 1); save(); closeSheet(); render(); break;
     case 'clear': LIST = []; save(); render(); toast('List cleared'); break;
     case 'share': share(); break;
@@ -287,6 +315,7 @@ document.addEventListener('click', e => {
   }
 });
 $('sheetBg').addEventListener('click', closeSheet);
+document.addEventListener('toggle', e => { if (e.target.classList?.contains('negot') && sheetState) sheetState.negOpen = e.target.open; }, true);
 document.addEventListener('input', e => {
   if (e.target.id === 'target' && sheetState) { sheetState.target = e.target.value; const pos = e.target.selectionStart; refreshSheet(); const t = $('target'); t.focus(); try { t.setSelectionRange(pos, pos); } catch (_) {} }
 });

@@ -82,3 +82,22 @@ h2{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--mute
 .warn{color:var(--bad);font-size:13px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(80px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:999px;z-index:20;font-weight:600;font-size:14px}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .18s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
+/* inline edit boxes on the quote sheet */
+.wt{display:block;width:100%;border:0;border-bottom:2px solid var(--line);background:none;border-radius:8px 8px 0 0}
+.wt.on{border-bottom-color:var(--accent);background:var(--gold-soft)}
+.edits{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ebox{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg);min-width:0}
+.ebox.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.eval{display:grid;gap:1px;width:100%;border:0;background:none;padding:8px 10px;text-align:left}
+.eval b{font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eval small{font-size:11px;color:var(--muted)}
+.ebox.on .eval{background:var(--gold-soft)}
+.estep{display:grid;grid-template-columns:44px 1fr 44px;border-top:1px solid var(--line)}
+.estep button{border:0;background:var(--card);padding:9px 0;font-size:20px;font-weight:700}
+.estep .rs{font-size:12px;font-weight:600;color:var(--accent);border-left:1px solid var(--line);border-right:1px solid var(--line)}
+.estep span{border-left:1px solid var(--line);border-right:1px solid var(--line);background:var(--card)}
+.negot{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:8px}
+.negot summary{font-weight:600;cursor:pointer}
+.negot[open]{display:grid}
+.negot input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:18px;margin:8px 0}
+.negot .opt{margin-top:6px}
