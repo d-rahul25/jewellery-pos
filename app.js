@@ -9,7 +9,7 @@ const store = {
 
 const DEFAULT_SETTINGS = {
   shopName: '',
-  gstOn: true, gstPct: 3,
+  gstOn: false, gstPct: 3,           // GST removed from the app for now (always off)
   roundTo: 1,                       // round final to nearest ₹1 / 10 / 50
   feed: {                           // which live feed item drives each metal
     gold:   { name: null, unit: 'auto' },   // unit: auto | g | 10g | kg
@@ -33,6 +33,7 @@ const DEFAULT_CATS = [
 ].map(([name, icon, metal, purity, mtype, mval], i) => ({ id: 'c' + i, name, icon, metal, purity, mtype, mval }));
 
 let S = Object.assign(structuredClone(DEFAULT_SETTINGS), store.get('settings', {}));
+S.gstOn = false;
 let CATS = store.get('cats', DEFAULT_CATS);
 let LIST = store.get('list', []);
 let FEED = store.get('feed', { items: [], at: null });   // last snapshot, survives offline
@@ -176,7 +177,7 @@ function viewRates() {
   const items = FEED.items;
   return `<h2>Gold</h2>${card('gold')}<h2>Silver</h2>${card('silver')}
   <h2>Live feed (Vicky Gold)</h2>
-  <p class="note">Pick which feed line drives gold and silver. Check whether it already includes GST (e.g. "incl GST+TCS"); if it does, turn GST off in Settings or set a negative adjustment.</p>
+  <p class="note">Pick which feed line drives gold and silver. Prices are used as the feed shows them. Use your adjustment to go above or below.</p>
   <div class="card">${items.length ? items.map(it => `<div class="feeditem"><span>${esc(it.name)}${it.isView === false ? ' <small class="note">(hidden on their site)</small>' : ''}</span><b class="num">${inr(it.ask)}</b>
     <div class="use"><button class="btn small" data-use="gold" data-name="${esc(it.name)}">${S.feed.gold.name === it.name ? '✓ ' : ''}Use for gold</button><button class="btn small" data-use="silver" data-name="${esc(it.name)}">${S.feed.silver.name === it.name ? '✓ ' : ''}Use for silver</button></div></div>`).join('')
     : '<div class="empty">No feed data yet. Rates appear here once the live feed connects.</div>'}</div>`;
@@ -185,7 +186,6 @@ function viewRates() {
 function viewSettings() {
   return `<h2>Shop</h2><div class="card">
     <div class="field"><label>Shop name (shown on shared estimates)</label><input id="shop" data-set="shopName" value="${esc(S.shopName)}" placeholder="e.g. Sharma Jewellers"></div>
-    <div class="field"><label>GST</label><div class="inline"><select data-set="gstOn" data-bool="1"><option value="1" ${S.gstOn ? 'selected' : ''}>Add GST</option><option value="0" ${!S.gstOn ? 'selected' : ''}>No GST</option></select><input type="number" inputmode="decimal" id="gstpct" data-set="gstPct" value="${S.gstPct}"></div></div>
     <div class="field"><label>Round final total to nearest</label><select data-set="roundTo">${[1, 10, 50, 100].map(v => `<option value="${v}" ${S.roundTo == v ? 'selected' : ''}>₹${v}</option>`).join('')}</select></div>
     <div class="field"><label>Purity factors (rate = 24K/999 rate × factor)</label><div class="inline">${['22K', '18K'].map(p => `<input type="number" step="0.001" inputmode="decimal" id="pur-${p}" data-set="purity.${p}" value="${S.purity[p]}" aria-label="${p}">`).join('')}</div></div>
   </div>
@@ -246,7 +246,7 @@ function sheetQuote() {
       : '<div class="warn">No rate yet. Tap Rate and type one.</div>'}</div>
     ${neg}
     <div class="keys">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map(k => `<button data-key="${k}">${k}</button>`).join('')}</div>
-    <div class="row">${st.idx == null ? `<button class="btn primary" data-act="add" ${wt > 0 && p.ok ? '' : 'disabled'}>Add to list</button>` : `<button class="btn primary" data-act="saveline">Save</button><button class="btn" data-act="delline">Remove</button>`}</div>`;
+    <div class="row">${st.idx == null ? `<button class="btn primary" data-act="add" ${wt > 0 && p.ok ? '' : 'disabled'}>Check another item</button>` : `<button class="btn primary" data-act="saveline">Done</button><button class="btn" data-act="delline">Remove</button>`}</div>`;
 }
 
 function sheetCat() {
@@ -298,7 +298,7 @@ document.addEventListener('click', e => {
   if (d.editcat) { const c = CATS.find(x => x.id === d.editcat); openSheet({ kind: 'cat', cat: { ...c } }); return; }
   switch (d.act) {
     case 'close': closeSheet(); break;
-    case 'add': { LIST.push(qLine(sheetState)); save(); closeSheet(); render(); toast('Added to list'); break; }
+    case 'add': { LIST.push(qLine(sheetState)); save(); closeSheet(); render(); toast('Saved to list'); break; }
     case 'saveline': { const l = qLine(sheetState); if (l.wt > 0) LIST[sheetState.idx] = l; save(); closeSheet(); render(); break; }
     case 'delline': LIST.splice(sheetState.idx, 1); save(); closeSheet(); render(); break;
     case 'clear': LIST = []; save(); render(); toast('List cleared'); break;
